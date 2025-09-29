@@ -1,0 +1,31 @@
+# docker/Dockerfile.api
+
+# 基礎映像檔：使用官方 Python 輕量級版本
+FROM python:3.12-slim
+
+# 設定工作目錄
+WORKDIR /app
+
+# 複製應用程式依賴文件 - 移除 COPY requirements.txt .
+
+# 安裝 API 服務所需的依賴套件
+# 我們將所有套件直接列在這裡，確保容器能夠獨立運行
+# 注意：你需要包含所有 ETL 和 API 運行的套件！
+RUN pip install --no-cache-dir \
+    fastapi \
+    uvicorn \
+    pydantic \
+    pandas \
+    scikit-learn \
+    joblib 
+
+# 複製核心程式碼、模型資產和資料
+# 這裡最關鍵的是要把模型資產 (在 src/models/ 中) 複製進去
+COPY src/ /app/src/
+COPY data/ /app/data/ 
+
+# 暴露服務埠號
+EXPOSE 8000
+
+# 定義啟動指令
+CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

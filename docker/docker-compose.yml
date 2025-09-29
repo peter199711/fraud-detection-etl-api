@@ -1,0 +1,62 @@
+# docker/docker-compose.yml (Phase 3: DB + API + Dashboard)
+
+services:
+  # 1. 詐欺偵測 API 服務 (保持不變)
+  fraud_api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    container_name: fraud-api
+    ports:
+      - "8000:8000"
+    restart: always
+    environment:
+      # 將 DB 連線資訊傳遞給 API (雖然 API 暫時不用，但這是好習慣)
+      DB_HOST: postgres_db
+      DB_NAME: fraud_db
+      DB_USER: user
+      DB_PASSWORD: password
+
+  # 2. Streamlit Dashboard 服務 (保持不變)
+  fraud_dashboard:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dashboard
+    container_name: fraud-dashboard
+    ports:
+      - "8501:8501"
+    depends_on:
+      - fraud_api
+    restart: always
+
+  # 3. PostgreSQL 資料庫服務
+  postgres_db:
+    image: postgres:16-alpine
+    container_name: postgres_db
+    environment:
+      # 設定資料庫名稱、使用者和密碼
+      POSTGRES_DB: fraud_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    volumes:
+      # 確保資料庫資料持久化
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      # 將資料庫埠號映射到主機，方便 Adminer 連線
+      - "5432:5432"
+    restart: always
+
+  # 4. Adminer (輕量級資料庫管理介面)
+  adminer:
+    image: adminer:4.8.1
+    container_name: adminer
+    ports:
+      # 管理介面埠號
+      - "8080:8080"
+    depends_on:
+      - postgres_db # 確保 DB 啟動後才啟動管理介面
+    restart: always
+
+# 定義 Volumes 以持久化資料庫數據
+volumes:
+  postgres_data:
