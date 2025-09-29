@@ -57,6 +57,29 @@ services:
       - postgres_db # 確保 DB 啟動後才啟動管理介面
     restart: always
 
+  # 5. MLflow 追蹤服務
+  mlflow_server:
+    image: python:3.12-slim # 使用 python 基礎映像檔，將在下一步構建
+    container_name: mlflow_server
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.mlflow # 這是我們下一步要建立的
+    ports:
+      - "5000:5000" # MLflow 預設埠號
+    environment:
+      # 將 MLflow 後端儲存設定為我們現有的 Postgres DB
+      MLFLOW_TRACKING_URI: postgresql://user:password@postgres_db:5432/fraud_db
+      # MLflow 儲存模型的路徑 (在容器內)
+      MLFLOW_ARTIFACT_URI: file:/mlflow/artifacts
+    volumes:
+      # 儲存 MLflow 的人工製品 (模型檔案、圖片等)
+      - mlflow_artifacts:/mlflow/artifacts
+    depends_on:
+      - postgres_db # 確保 DB 啟動後 MLflow 才能連線
+    restart: always
+
+
 # 定義 Volumes 以持久化資料庫數據
 volumes:
   postgres_data:
+  mlflow_artifacts:

@@ -1,68 +1,71 @@
 # src/etl/transform_data.py
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
+from sqlalchemy import create_engine
 import joblib
 import os
 
-# --- 設定路徑 ---
-RAW_DATA_PATH = 'data/creditcard.csv'
-MODEL_PATH = 'src/models/baseline_model.pkl'
-SCALER_PATH = 'src/models/scaler.pkl' # 儲存Scaler，供API推論時使用
-PROCESSED_DATA_PATH = 'data/processed_data.csv' # 訓練完成後，儲存處理過的資料供備用
+# --- 設定路徑 (保持與你的專案架構一致) ---
+MODEL_PATH = '../src/models/baseline_model.pkl'
 
-def run_etl_and_train(raw_data_path: str, model_path: str, scaler_path: str):
+# --- 資料庫連線參數 (與 docker-compose.yml 保持一致) ---
+# 注意：這裡使用 'localhost' 是因為你是在 Docker 容器之外的本機執行此腳本
+DB_HOST = 'localhost' 
+DB_NAME = 'fraud_db'
+DB_USER = 'user'
+DB_PASSWORD = 'password'
+DB_PORT = '5432'
+DB_TYPE = 'postgresql' 
+DATABASE_URL = f"{DB_TYPE}://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+
+FEATURE_VIEW_NAME = 'feature_transactions'
+
+def run_etl_and_train():
     """
-    執行資料清理、特徵工程、模型訓練並儲存模型與 Scaler。
+    從 PostgreSQL 特徵視圖載入數據，訓練模型並儲存。
     """
-    print("--- 1. 載入資料 ---")
-    df = pd.read_csv(raw_data_path)
-
-    # 1.1 核心前處理邏輯 (與 EDA Notebook 保持一致！)
-    scaler = StandardScaler()
-    
-    # 標準化 'Amount' 和 'Time' - 一起 fit，確保 scaler 知道兩個特徵
-    features_to_scale = df[['Amount', 'Time']].values
-    scaled_features = scaler.fit_transform(features_to_scale)
-    
-    df['scaled_amount'] = scaled_features[:, 0]  # Amount 的標準化結果
-    df['scaled_time'] = scaled_features[:, 1]    # Time 的標準化結果
-    
-    # 儲存 Scaler 供 API 推論時對單筆資料進行標準化
-    joblib.dump(scaler, scaler_path)
-    print(f"Scaler 儲存至: {scaler_path}")
-    
-    df.drop(['Time', 'Amount'], axis=1, inplace=True)
-
-    # 1.2 定義特徵 (X) 和目標 (y)
-    X = df.drop('Class', axis=1)
-    y = df['Class']
-
-    # 1.3 分割訓練集與測試集
-    # 這裡我們使用所有數據進行訓練，因為 ETL 的重點是資料準備，
-    # 測試集用於 Dashboard 展示即可。
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
-
-    print("--- 2. 訓練 Baseline 模型 ---")
-    # 採用 class_weight='balanced' 處理不平衡資料
-    model = LogisticRegression(solver='liblinear', random_state=42, class_weight='balanced')
-    model.fit(X_train, y_train)
-
-    print("--- 3. 儲存模型 ---")
-    # 儲存模型
-    joblib.dump(model, model_path)
-    print(f"模型儲存至: {model_path}")
-    
-    # (可選) 儲存處理後的資料以供 Dashboard/測試使用
-    X_test.assign(Class=y_test).to_csv(PROCESSED_DATA_PATH, index=False)
-    
-    print("\nETL 和訓練流程完成！")
-
-if __name__ == "__main__":
     # 確保 models 資料夾存在
     os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
-    os.makedirs(os.path.dirname(PROCESSED_DATA_PATH), exist_ok=True)
-    run_etl_and_train(RAW_DATA_PATH, MODEL_PATH, SCALER_PATH)
+    
+    try:
+        # 建立連線引擎
+        engine = create_engine(DATABASE_URL)
+        print(f"成功連線到資料庫：{DB_NAME}")
+
+        print(f"--- 1. 從資料庫載入特徵：{FEATURE_VIEW_NAME} ---")
+
+        # 1.1 使用 SQL 查詢從視圖中載入數據
+        sql_query = f"SELECT * FROM {FEATURE_VIEW_NAME}"
+        # pandas.read_sql 會自動從 SQL 查詢中讀取數據到 DataFrame
+        df = pd.read_sql(sql_query, engine)
+        
+        print(f"成功載入 {len(df)} 筆特徵數據。")
+
+        # 1.2 定義特徵 (X) 和目標 (y)
+        # 數據來自 VIEW，已經包含 scaled_amount 和 scaled_time
+        X = df.drop('class', axis=1) # 'class' 欄位在 DB 中是小寫
+        y = df['class']
+
+        # 1.3 分割訓練集與訓練模型
+        X_train, _, y_train, _ = train_test_split(
+            X, y, test_size=0.2, random_state=42, stratify=y
+        )
+
+        print("--- 2. 訓練 Baseline 模型 ---")
+        model = LogisticRegression(solver='liblinear', random_state=42, class_weight='balanced')
+        model.fit(X_train, y_train)
+
+        # 1.4 儲存模型
+        joblib.dump(model, MODEL_PATH)
+        print(f"模型儲存至: {MODEL_PATH}")
+        
+    except ImportError:
+        print("錯誤：請確認已安裝 psycopg2-binary 和 sqlalchemy: pip install psycopg2-binary sqlalchemy")
+    except Exception as e:
+        print(f"訓練流程失敗。錯誤訊息: {e}")
+        print("請確認 PostgreSQL 容器 (postgres_db) 正在運行，且 'feature_transactions' VIEW 已被創建。")
+
+
+if __name__ == "__main__":
+    run_etl_and_train()

@@ -1,0 +1,21 @@
+# docker/Dockerfile.mlflow
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# 安裝 MLflow 和連線到 Postgres 所需的套件
+# psycopg2 是 Postgres 的 Python 驅動
+RUN pip install --no-cache-dir mlflow psycopg2-binary gunicorn
+
+# 暴露 MLflow 埠號
+EXPOSE 5000
+
+# 啟動 MLflow 追蹤伺服器
+# --backend-store-uri: 指定 Postgres 作為追蹤數據庫
+# --default-artifact-root: 指定模型等人工製品的存儲位置
+# --host 0.0.0.0: 允許外部連線
+CMD ["mlflow", "server", \
+     "--backend-store-uri", "postgresql://user:password@postgres_db:5432/fraud_db", \
+     "--default-artifact-root", "/mlflow/artifacts", \
+     "--host", "0.0.0.0", "--port", "5000"]
