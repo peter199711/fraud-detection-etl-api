@@ -1,0 +1,18 @@
+# 虛擬環境 (Virtual Environments)
+# 確保 venv 不會被追蹤和上傳
+venv/
+.venv/
+env/
+
+# 編譯產生的 .pyc 檔案和快取 (Compiled files and caches)
+__pycache__/
+*.pyc
+.mypy_cache/
+.pytest_cache/
+
+# 操作系統產生的檔案 (OS generated files)
+.DS_Store
+
+# 日誌和快取 (Logs and data)
+*.log
+tmp/
