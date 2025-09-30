@@ -9,14 +9,17 @@ WORKDIR /app
 # 複製應用程式依賴文件 - 移除 COPY requirements.txt .
 
 # 安裝 API 服務所需的依賴套件
-# 我們將所有套件直接列在這裡，確保容器能夠獨立運行
-# 注意：你需要包含所有 ETL 和 API 運行的套件！
+# 包含所有 ETL 和 API 運行的套件！
 RUN pip install --no-cache-dir \
     fastapi \
-    uvicorn \
+    uvicorn[standard] \
     pydantic \
     pandas \
     scikit-learn \
+    xgboost \
+    sqlalchemy \
+    psycopg2-binary \
+    mlflow \
     joblib 
 
 # 複製核心程式碼、模型資產和資料

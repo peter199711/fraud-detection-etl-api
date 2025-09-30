@@ -1,4 +1,4 @@
-# docker/docker-compose.yml (Phase 3: DB + API + Dashboard)
+# docker/docker-compose.yml
 
 services:
   # 1. 詐欺偵測 API 服務 (保持不變)
@@ -11,13 +11,16 @@ services:
       - "8000:8000"
     restart: always
     environment:
-      # 將 DB 連線資訊傳遞給 API (雖然 API 暫時不用，但這是好習慣)
+      # --- 新增：讓 API 也知道 MLflow Server 在哪 ---
+      MLFLOW_TRACKING_URI: http://mlflow_server:5000
       DB_HOST: postgres_db
       DB_NAME: fraud_db
       DB_USER: user
       DB_PASSWORD: password
+    depends_on:
+      - mlflow_server
 
-  # 2. Streamlit Dashboard 服務 (保持不變)
+  # 2. Streamlit Dashboard 服務
   fraud_dashboard:
     build:
       context: ..
@@ -27,59 +30,97 @@ services:
       - "8501:8501"
     depends_on:
       - fraud_api
+      - mlflow_server
     restart: always
+    environment:
+      # --- 新增：讓 Dashboard 也知道 MLflow Server 在哪 ---
+      MLFLOW_BASE_URI: http://mlflow_server:5000/api/2.0/
+      API_URL: http://fraud_api:8000/predict
 
-  # 3. PostgreSQL 資料庫服務
+  # 3. PostgreSQL 資料庫服務 (保持不變)
   postgres_db:
     image: postgres:16-alpine
     container_name: postgres_db
     environment:
-      # 設定資料庫名稱、使用者和密碼
       POSTGRES_DB: fraud_db
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
     volumes:
-      # 確保資料庫資料持久化
       - postgres_data:/var/lib/postgresql/data
     ports:
-      # 將資料庫埠號映射到主機，方便 Adminer 連線
       - "5432:5432"
     restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d fraud_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-  # 4. Adminer (輕量級資料庫管理介面)
+  # 4. Adminer (保持不變)
   adminer:
     image: adminer:4.8.1
     container_name: adminer
     ports:
-      # 管理介面埠號
       - "8080:8080"
     depends_on:
-      - postgres_db # 確保 DB 啟動後才啟動管理介面
+      - postgres_db
     restart: always
 
   # 5. MLflow 追蹤服務
   mlflow_server:
-    image: python:3.12-slim # 使用 python 基礎映像檔，將在下一步構建
-    container_name: mlflow_server
     build:
       context: ..
-      dockerfile: docker/Dockerfile.mlflow # 這是我們下一步要建立的
+      dockerfile: docker/Dockerfile.mlflow
+    container_name: mlflow_server
     ports:
-      - "5000:5000" # MLflow 預設埠號
+      - "5000:5000"
     environment:
-      # 將 MLflow 後端儲存設定為我們現有的 Postgres DB
       MLFLOW_TRACKING_URI: postgresql://user:password@postgres_db:5432/fraud_db
-      # MLflow 儲存模型的路徑 (在容器內)
       MLFLOW_ARTIFACT_URI: file:/mlflow/artifacts
     volumes:
-      # 儲存 MLflow 的人工製品 (模型檔案、圖片等)
       - mlflow_artifacts:/mlflow/artifacts
     depends_on:
-      - postgres_db # 確保 DB 啟動後 MLflow 才能連線
+      postgres_db:
+        condition: service_healthy
     restart: always
 
+  # --- 新增：6. 用於載入原始數據的服務 ---
+  data_loader:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    container_name: data_loader
+    command: ["python", "src/etl/db_load.py"]
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres_db
+      DB_NAME: fraud_db
+      DB_USER: user
+      DB_PASSWORD: password
 
-# 定義 Volumes 以持久化資料庫數據
+  # --- 新增：7. 用於執行一次性 ETL/訓練任務的服務 ---
+  etl_runner:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api # 可以重用 API 的環境
+    container_name: etl_runner
+    command: ["python", "src/etl/transform_data.py"] # 指定容器啟動時要執行的指令
+    depends_on:
+      mlflow_server:
+        condition: service_started
+      postgres_db:
+        condition: service_healthy
+    environment:
+      # 關鍵：將 Docker 網路中的服務名稱傳遞給 Python 腳本
+      DB_HOST: postgres_db
+      MLFLOW_HOST: mlflow_server
+      DB_NAME: fraud_db
+      DB_USER: user
+      DB_PASSWORD: password
+    # 這個服務執行完就會停止，所以不需要 ports 和 restart policy
+
 volumes:
   postgres_data:
   mlflow_artifacts:

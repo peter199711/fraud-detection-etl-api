@@ -5,10 +5,13 @@ import joblib
 import pandas as pd
 import numpy as np
 import os
+import mlflow
+import mlflow.sklearn
 
-# --- 設定路徑 (與 ETL 腳本中的儲存路徑一致) ---
-MODEL_PATH = 'src/models/baseline_model.pkl'
-SCALER_PATH = 'src/models/scaler.pkl'
+# --- 設定MLflow和本地路徑 ---
+MLFLOW_TRACKING_URI = os.getenv('MLFLOW_TRACKING_URI', 'http://localhost:5000')
+MODEL_PATH = '/app/src/models/baseline_model.pkl'  # 本地備份路徑
+SCALER_PATH = '/app/src/models/scaler.pkl'          # 本地備份路徑
 
 # --- 1. 定義資料結構 (Schema) ---
 # 這個結構必須對應模型訓練時的輸入特徵 (除了 Time/Amount，它們被替換了)
@@ -50,17 +53,62 @@ class Transaction(BaseModel):
 # 為了讓範例運作，我們假設 Transaction 已經包含所有 V 特徵。
 
 # --- 2. 載入模型與 Scaler ---
+def load_model_from_mlflow():
+    """嘗試從MLflow載入最新模型，失敗則使用本地檔案"""
+    try:
+        print(f"設定 MLflow Tracking URI: {MLFLOW_TRACKING_URI}")
+        mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+        
+        # 嘗試獲取最新的模型
+        client = mlflow.tracking.MlflowClient()
+        experiment = client.get_experiment_by_name("Fraud Detection Baseline")
+        
+        if experiment:
+            # 獲取所有runs並按F1分數排序，選擇最佳模型
+            runs = client.search_runs(
+                experiment_ids=[experiment.experiment_id],
+                order_by=["metrics.f1_score DESC"],
+                max_results=10
+            )
+            
+            if runs:
+                best_run = runs[0]  # F1分數最高的模型
+                model_uri = f"runs:/{best_run.info.run_id}/model"
+                model = mlflow.sklearn.load_model(model_uri)
+                
+                # 獲取模型信息
+                f1_score = best_run.data.metrics.get('f1_score', 'N/A')
+                model_name = best_run.data.tags.get('model_type', 'Unknown')
+                
+                print(f"成功從 MLflow 載入最佳模型！")
+                print(f"  模型類型: {model_name}")
+                print(f"  F1 Score: {f1_score}")
+                print(f"  Run ID: {best_run.info.run_id}")
+                return model
+        
+        print("MLflow 中沒有找到模型，嘗試載入本地檔案...")
+        
+    except Exception as e:
+        print(f"從 MLflow 載入模型失敗: {e}")
+        print("嘗試載入本地檔案...")
+    
+    # 回退到本地檔案
+    try:
+        model = joblib.load(MODEL_PATH)
+        print("成功載入本地模型檔案！")
+        return model
+    except Exception as e:
+        print(f"載入本地模型失敗: {e}")
+        return None
+
+# 載入模型和scaler
+model = load_model_from_mlflow()
+
 try:
-    model = joblib.load(MODEL_PATH)
     scaler = joblib.load(SCALER_PATH)
-    print("模型和 Scaler 載入成功！")
-except FileNotFoundError:
-    print(f"錯誤：找不到模型或 Scaler 檔案。請先執行 {os.path.abspath('src/etl/transform_data.py')}。")
-    model = None
-    scaler = None
+    print("Scaler 載入成功！")
 except Exception as e:
-    print(f"載入模型時發生錯誤: {e}")
-    model = None
+    print(f"載入 Scaler 失敗: {e}")
     scaler = None
 
 # --- 3. 初始化 FastAPI App ---

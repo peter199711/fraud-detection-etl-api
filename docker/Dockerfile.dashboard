@@ -4,8 +4,8 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# 安裝 Streamlit 和 requests (用於呼叫 API)
-RUN pip install --no-cache-dir streamlit pandas requests
+# 安裝 Streamlit 和相關套件
+RUN pip install --no-cache-dir streamlit pandas requests plotly matplotlib seaborn
 
 # 複製 Dashboard 程式碼
 COPY src/dashboard/ /app/src/dashboard/
