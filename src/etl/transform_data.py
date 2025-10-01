@@ -11,7 +11,7 @@ from xgboost import XGBClassifier
 
 # --- 設定路徑與參數 ---
 # 儲存最終模型的本地路徑
-MODEL_PATH = '/app/src/models/baseline_model.pkl' # 使用容器內的絕對路徑
+MODEL_PATH = os.getenv('MODEL_PATH', '/opt/airflow/models/baseline_model.pkl') # Airflow 容器路徑
 
 # --- 改進：從環境變數讀取主機名稱，並提供本地預設值 ---
 DB_HOST = os.getenv('DB_HOST', 'localhost')
@@ -75,8 +75,12 @@ def train_model_and_log_mlflow(model_class, run_name, params, tags, X_train, X_t
 
         print(f"   AUC: {metrics['roc_auc_score']:.4f}, F1: {metrics['f1_score']:.4f}, Precision: {metrics['precision_score']:.4f}")
 
-        # 儲存模型到 MLflow Artifacts
-        mlflow.sklearn.log_model(model, "model")
+        # 儲存模型到 MLflow Artifacts（使用相容的方式）
+        try:
+            mlflow.sklearn.log_model(model, "model")
+        except Exception as e:
+            print(f"模型記錄警告: {e}")
+            # 繼續執行，不中斷訓練流程
         
         return metrics['f1_score'], model
 
@@ -155,5 +159,9 @@ def run_etl_and_train_pipeline():
         print(traceback.format_exc())
         print("請確認 MLflow Server (mlflow_server) 和 PostgreSQL (postgres_db) 容器正在運行。")
 
-if __name__ == "__main__":
+def main():
+    """主執行函式 - 供 Airflow DAG 呼叫"""
     run_etl_and_train_pipeline()
+
+if __name__ == "__main__":
+    main()

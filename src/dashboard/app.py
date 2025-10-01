@@ -17,7 +17,7 @@ st.set_page_config(page_title="詐欺偵測儀表板", layout="wide")
 
 
 # --- 核心函式 1: 動態獲取實驗 ID ---
-@st.cache_data
+@st.cache_data(ttl=60)  # 緩存 60 秒後自動更新
 def get_experiment_id():
     """動態地從 MLflow 獲取實驗 ID。"""
     try:
@@ -35,7 +35,7 @@ def get_experiment_id():
 
 
 # --- 核心函式 2: 從 MLflow 讀取數據 ---
-@st.cache_data
+@st.cache_data(ttl=60)  # 緩存 60 秒後自動更新
 def get_mlflow_runs(experiment_id):
     """從 MLflow Tracking API 獲取所有實驗運行結果 (使用 runs/search)。"""
     

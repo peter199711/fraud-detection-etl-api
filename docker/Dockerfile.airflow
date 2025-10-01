@@ -1,0 +1,27 @@
+# 使用官方 Airflow 映像檔作為基礎（使用較新版本支援 Python 3.9+）
+FROM apache/airflow:2.10.2
+
+# 切換到 root 用戶安裝系統套件
+USER root
+
+# 安裝 Postgres 連線所需的系統級依賴 (libpq-dev)
+# 這是確保 psycopg2-binary 能夠正確安裝的關鍵
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libpq-dev \
+        gcc \
+        python3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# 切換回 airflow 用戶
+USER airflow
+
+# 安裝所有 Python 專案依賴
+# Airflow 需要安裝 pandas, scikit-learn, xgboost, sqlalchemy, mlflow 等套件，
+# 才能在 DAG 中執行你的 Python 腳本。
+# 注意：這裡使用 --prefix /usr/local/ 來確保全域可用
+# 只安裝必要的套件（pandas 使用 Airflow 內建版本）
+RUN pip install --no-cache-dir \
+    scikit-learn \
+    xgboost \
+    mlflow 

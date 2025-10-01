@@ -15,7 +15,7 @@ DB_TYPE = 'postgresql' # 資料庫類型
 # SQLAlchemy 連線字串
 DATABASE_URL = f"{DB_TYPE}://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
-RAW_DATA_PATH = '/app/data/creditcard.csv'  # 使用容器內的絕對路徑
+RAW_DATA_PATH = os.getenv('DATA_PATH', '/opt/airflow/data/creditcard.csv')  # Airflow 容器路徑
 RAW_TABLE_NAME = 'raw_transactions'
 FEATURE_VIEW_NAME = 'feature_transactions' 
 
@@ -30,7 +30,8 @@ def connect_and_load_data():
             # 使用 IF EXISTS 確保即使 VIEW 不存在也不會報錯
             drop_view_sql = text(f"DROP VIEW IF EXISTS {FEATURE_VIEW_NAME} CASCADE;")
             connection.execute(drop_view_sql)
-            connection.commit()
+            if hasattr(connection, 'commit'):
+                connection.commit()
             print(f"已清理舊的 {FEATURE_VIEW_NAME} 視圖依賴。")
 
         # 1. 載入 CSV 數據
@@ -80,7 +81,8 @@ def create_feature_view(engine):
     try:
         with engine.connect() as connection:
             connection.execute(text(create_view_sql))
-            connection.commit()
+            if hasattr(connection, 'commit'):
+                connection.commit()
             print(f"成功創建 {FEATURE_VIEW_NAME} 視圖。")
     except Exception as e:
         print(f"創建視圖失敗：{e}")
