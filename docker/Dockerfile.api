@@ -17,6 +17,7 @@ RUN pip install --no-cache-dir \
     pandas \
     scikit-learn \
     xgboost \
+    lightgbm \
     sqlalchemy \
     psycopg2-binary \
     mlflow \

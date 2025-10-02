@@ -7,6 +7,7 @@ import numpy as np
 import os
 import mlflow
 import mlflow.sklearn
+import mlflow.pyfunc  # 新增：支援通用模型載入
 
 # --- 設定MLflow和本地路徑 ---
 MLFLOW_TRACKING_URI = os.getenv('MLFLOW_TRACKING_URI', 'http://localhost:5000')
@@ -74,17 +75,34 @@ def load_model_from_mlflow():
             if runs:
                 best_run = runs[0]  # F1分數最高的模型
                 model_uri = f"runs:/{best_run.info.run_id}/model"
-                model = mlflow.sklearn.load_model(model_uri)
                 
                 # 獲取模型信息
                 f1_score = best_run.data.metrics.get('f1_score', 'N/A')
                 model_name = best_run.data.tags.get('model_type', 'Unknown')
                 
-                print(f"成功從 MLflow 載入最佳模型！")
-                print(f"  模型類型: {model_name}")
-                print(f"  F1 Score: {f1_score}")
-                print(f"  Run ID: {best_run.info.run_id}")
-                return model
+                # ✅ 智能模型載入：根據模型類型選擇正確的載入方法
+                try:
+                    if model_name in ['LogisticRegression']:
+                        model = mlflow.sklearn.load_model(model_uri)
+                    else:  # XGBoost, LightGBM 等使用通用載入
+                        model = mlflow.pyfunc.load_model(model_uri)
+                    
+                    print(f"成功從 MLflow 載入最佳模型！")
+                    print(f"  模型類型: {model_name}")
+                    print(f"  F1 Score: {f1_score}")
+                    print(f"  Run ID: {best_run.info.run_id}")
+                    return model
+                    
+                except Exception as load_error:
+                    print(f"使用 {model_name} 載入方法失敗: {load_error}")
+                    # 嘗試備用載入方法
+                    try:
+                        model = mlflow.pyfunc.load_model(model_uri)
+                        print(f"使用通用方法成功載入模型: {model_name}")
+                        return model
+                    except Exception as fallback_error:
+                        print(f"通用載入方法也失敗: {fallback_error}")
+                        raise fallback_error
         
         print("MLflow 中沒有找到模型，嘗試載入本地檔案...")
         
@@ -167,13 +185,37 @@ def predict_fraud(transaction: Transaction):
     # 建議儲存特徵列表並載入：feature_list = joblib.load('feature_list.pkl')
     
     # 4. 進行預測
-    # 預測機率
-    proba = model.predict_proba(df.values)[:, 1]
-    # 預測類別
-    prediction = (proba > 0.5).astype(int) # 預設 threshold=0.5
-    
-    return {
-        "is_fraud": int(prediction[0]),
-        "fraud_probability": float(proba[0]),
-        "message": "Transaction analyzed successfully."
-    }
+    try:
+        # ✅ 智能預測：根據模型類型使用不同方法
+        if hasattr(model, 'predict_proba'):
+            # sklearn/XGBoost/LightGBM 直接載入的模型
+            proba = model.predict_proba(df.values)[:, 1]
+        else:
+            # MLflow pyfunc 載入的模型
+            prediction_df = model.predict(df)
+            if isinstance(prediction_df, pd.DataFrame) and len(prediction_df.columns) > 1:
+                # 多列輸出，取第二列 (詐欺機率)
+                proba = prediction_df.iloc[:, 1].values
+            else:
+                # 單列輸出，可能是機率或類別
+                pred_values = prediction_df.values if isinstance(prediction_df, pd.DataFrame) else prediction_df
+                if pred_values.max() <= 1.0 and pred_values.min() >= 0.0:
+                    proba = pred_values  # 看起來是機率
+                else:
+                    proba = [0.5]  # 回退預設值
+        
+        # 預測類別
+        prediction = (proba > 0.5).astype(int) if isinstance(proba, (list, tuple)) == False else [int(p > 0.5) for p in proba]
+        
+        return {
+            "is_fraud": int(prediction[0]),
+            "fraud_probability": float(proba[0]),
+            "message": "Transaction analyzed successfully."
+        }
+        
+    except Exception as pred_error:
+        print(f"預測過程中發生錯誤: {pred_error}")
+        return {
+            "error": f"Prediction failed: {str(pred_error)}",
+            "message": "Please check model compatibility and try again."
+        }

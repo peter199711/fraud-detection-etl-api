@@ -88,7 +88,9 @@ def get_mlflow_runs(experiment_id):
                 'model_type': tags_dict.get('model_type', 'Unknown'),
             })
             
-        df = pd.DataFrame(records).dropna(subset=['f1'])
+        df = pd.DataFrame(records)
+        # 只過濾掉沒有 F1 分數的記錄，不管是否有模型文件
+        df = df.dropna(subset=['f1'])
         if not df.empty:
             df = df.sort_values(by='f1', ascending=False).reset_index(drop=True)
             df['f1'] = df['f1'].map(lambda x: f'{x:.4f}')
