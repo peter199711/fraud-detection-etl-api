@@ -2,7 +2,10 @@
 FROM python:3.9-slim
 
 # 安裝 MLflow 和必要的依賴
+# 增加 timeout 和使用 PyPI 鏡像（台灣/中國用戶適用）
 RUN pip install --no-cache-dir \
+    --default-timeout=300 \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple \
     mlflow==2.10.2 \
     psycopg2-binary
 

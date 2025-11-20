@@ -19,10 +19,17 @@ USER airflow
 # 安裝所有 Python 專案依賴
 # Airflow 需要安裝 pandas, scikit-learn, xgboost, sqlalchemy, mlflow 等套件，
 # 才能在 DAG 中執行你的 Python 腳本。
-# 注意：這裡使用 --prefix /usr/local/ 來確保全域可用
-# 只安裝必要的套件（pandas 使用 Airflow 內建版本）
+# 使用鏡像源和增加 timeout 避免下載超時
 RUN pip install --no-cache-dir \
+    --default-timeout=300 \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple \
     scikit-learn \
     xgboost \
     mlflow \
-    lightgbm 
+    lightgbm \
+    psycopg2-binary \
+    apache-airflow-providers-postgres \
+    apache-airflow-providers-standard \
+    sqlalchemy \
+    pandas \
+    tensorflow>=2.15.0 

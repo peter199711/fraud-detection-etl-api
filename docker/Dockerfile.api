@@ -10,7 +10,10 @@ WORKDIR /app
 
 # 安裝 API 服務所需的依賴套件
 # 包含所有 ETL 和 API 運行的套件！
+# 使用鏡像源和增加 timeout 避免下載超時
 RUN pip install --no-cache-dir \
+    --default-timeout=300 \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple \
     fastapi \
     uvicorn[standard] \
     pydantic \
@@ -21,7 +24,8 @@ RUN pip install --no-cache-dir \
     sqlalchemy \
     psycopg2-binary \
     mlflow \
-    joblib 
+    joblib \
+    tensorflow>=2.15.0 
 
 # 複製核心程式碼、模型資產和資料
 # 這裡最關鍵的是要把模型資產 (在 src/models/ 中) 複製進去

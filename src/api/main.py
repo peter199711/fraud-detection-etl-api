@@ -8,11 +8,12 @@ import os
 import mlflow
 import mlflow.sklearn
 import mlflow.pyfunc  # 新增：支援通用模型載入
+import mlflow.tensorflow  # 新增：支援 TensorFlow 模型載入
 
 # --- 設定MLflow和本地路徑 ---
 MLFLOW_TRACKING_URI = os.getenv('MLFLOW_TRACKING_URI', 'http://localhost:5000')
-MODEL_PATH = '/app/src/models/baseline_model.pkl'  # 本地備份路徑
-SCALER_PATH = '/app/src/models/scaler.pkl'          # 本地備份路徑
+MODEL_PATH = 'src/models/baseline_model.pkl'  # 本地備份路徑
+SCALER_PATH = 'src/models/scaler.pkl'          # 本地備份路徑
 
 # --- 1. 定義資料結構 (Schema) ---
 # 這個結構必須對應模型訓練時的輸入特徵 (除了 Time/Amount，它們被替換了)
@@ -84,6 +85,13 @@ def load_model_from_mlflow():
                 try:
                     if model_name in ['LogisticRegression']:
                         model = mlflow.sklearn.load_model(model_uri)
+                    elif model_name in ['TensorFlow', 'TensorFlow_DNN']:
+                        # Keras 3.0+ 使用 mlflow.keras 或 pyfunc
+                        try:
+                            import mlflow.keras
+                            model = mlflow.keras.load_model(model_uri)
+                        except:
+                            model = mlflow.pyfunc.load_model(model_uri)
                     else:  # XGBoost, LightGBM 等使用通用載入
                         model = mlflow.pyfunc.load_model(model_uri)
                     
@@ -190,6 +198,9 @@ def predict_fraud(transaction: Transaction):
         if hasattr(model, 'predict_proba'):
             # sklearn/XGBoost/LightGBM 直接載入的模型
             proba = model.predict_proba(df.values)[:, 1]
+        elif hasattr(model, 'predict') and hasattr(model, 'layers'):
+            # TensorFlow/Keras 模型 (檢查是否有 layers 屬性)
+            proba = model.predict(df.values).flatten()
         else:
             # MLflow pyfunc 載入的模型
             prediction_df = model.predict(df)

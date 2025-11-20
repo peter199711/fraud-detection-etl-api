@@ -8,7 +8,9 @@
 - ✅ **完全Docker化部署** - 一鍵啟動所有服務
 - ✅ **Apache Airflow自動化** - 完整的ETL工作流程管道
 - ✅ **MLflow實驗追蹤** - 完整的模型版本管理
+- ✅ **多模型支持** - XGBoost + TensorFlow深度學習模型
 - ✅ **高性能XGBoost模型** - F1 Score達0.84
+- ✅ **TensorFlow深度學習** - 支持神經網絡模型訓練與部署
 - ✅ **實時預測Dashboard** - 直觀的模型監控界面
 - ✅ **生產級架構** - 9個微服務協同運作
 
@@ -30,6 +32,9 @@ fraud-detection-etl-api/
 │   ├── dashboard/          # Streamlit儀表板
 │   │   └── app.py          # Dashboard主程式
 │   └── models/             # 訓練好的模型資產
+│       ├── baseline_model.pkl    # 基準模型
+│       ├── scaler.pkl           # 特徵縮放器
+│       └── tensorflow_model.py  # TensorFlow模型定義
 ├── docker/                 # Docker配置
 │   ├── docker-compose.yml  # 服務編排
 │   ├── Dockerfile.api      # API容器
@@ -48,6 +53,7 @@ fraud-detection-etl-api/
 | **工作流程自動化** | Apache Airflow 2.10 | ETL排程和模型重訓練管道 |
 | **實驗追蹤** | MLflow | 模型版本管理和實驗追蹤 |
 | **機器學習** | XGBoost + Scikit-learn | 高性能梯度提升 + 經典ML |
+| **深度學習** | TensorFlow/Keras | 神經網絡模型訓練與部署 |
 | **API服務** | FastAPI + Uvicorn | 高性能異步API框架 |
 | **前端儀表板** | Streamlit | 快速構建ML應用界面 |
 | **容器化** | Docker Compose | 完整微服務架構 |
@@ -126,12 +132,13 @@ graph TB
 ### 🔄 自動化數據流程 (Airflow DAG)
 1. **數據載入**: Kaggle信用卡交易數據 → PostgreSQL
 2. **特徵工程**: 創建feature_transactions視圖
-3. **模型訓練**: 邏輯迴歸 + XGBoost並行訓練
+3. **模型訓練**: 邏輯迴歸 + XGBoost + TensorFlow並行訓練
 4. **實驗追蹤**: MLflow記錄所有訓練結果
 5. **模型驗證**: 自動性能評估和品質檢查
-6. **模型部署**: API自動載入最佳模型
-7. **監控展示**: Dashboard顯示性能比較
-8. **定期重訓練**: 每日自動執行完整流程
+6. **閾值優化**: 針對不平衡數據調整預測閾值
+7. **模型部署**: API自動載入最佳模型
+8. **監控展示**: Dashboard顯示性能比較
+9. **定期重訓練**: 每日自動執行完整流程
 
 ## 🎯 核心功能
 
@@ -140,7 +147,10 @@ graph TB
 | 模型類型 | F1 Score | AUC Score | Precision | Recall | 狀態 |
 |----------|----------|-----------|-----------|--------|----- |
 | **XGBoost** | **0.8394** | **0.9724** | **0.8526** | **0.8265** | ✅ **生產使用** |
+| **TensorFlow/Keras** | **0.8141** | **-** | **0.8020** | **0.8265** | ✅ **深度學習** |
 | Logistic Regression | 0.1146 | 0.9720 | 0.0611 | 0.9184 | 📊 基準比較 |
+
+> 💡 **注意**: TensorFlow 模型使用優化閾值（0.996）以平衡 Precision 和 Recall。詳見 `notebooks/improve_tensorflow_precision.ipynb`
 
 ### 🔮 預測API
 
@@ -184,6 +194,22 @@ graph TB
 - 📊 **執行監控**: Web UI追蹤所有任務狀態
 - ⚙️ **配置管理**: 靈活的環境變數和連接配置
 
+### 🧠 TensorFlow深度學習模型
+- **架構**: 4層全連接神經網絡 (128→64→32→1)
+- **優化**: Batch Normalization + Dropout防止過擬合
+- **類別平衡**: 自動計算class_weight處理不平衡數據
+- **閾值優化**: 針對業務需求調整預測閾值
+- **性能**: F1 Score達0.8141，Precision為0.8020
+
+### 🎯 Precision優化策略
+| 策略 | 閾值 | Precision | Recall | 適用場景 |
+|------|------|-----------|--------|---------|
+| **保守策略** | 0.9 | 0.3927 | 0.8776 | 重視用戶體驗 |
+| **平衡策略** | 0.996 | 0.8020 | 0.8265 | 平衡兩者 |
+| **激進策略** | 0.5 | 0.0663 | 0.9184 | 優先防詐欺 |
+
+> 💡 **業務建議**: 根據詐欺損失與誤報成本的比例選擇合適閾值。詳細分析請參考 `notebooks/improve_tensorflow_precision.ipynb`
+
 ## 💼 商業價值
 
 ### 📊 風險控制效益
@@ -195,14 +221,21 @@ graph TB
 
 ### 🎯 技術亮點
 - ✅ **完整MLOps流程**: 從數據到部署的端到端自動化
+- ✅ **多模型支持**: 傳統機器學習 + 深度學習混合架構
 - ✅ **工作流程自動化**: Apache Airflow管理複雜的ETL管道
 - ✅ **微服務架構**: 9個服務協同運作，高可用性和可擴展性
 - ✅ **實驗追蹤**: MLflow確保模型可重現性和版本控制
 - ✅ **即時監控**: Dashboard提供實時系統狀態
 - ✅ **容器化部署**: Docker確保環境一致性
 - ✅ **定期重訓練**: 自動化模型更新和性能監控
+- ✅ **不平衡數據處理**: class_weight調整與閾值優化策略
+- ✅ **業務導向優化**: 基於成本分析的模型調參
 
 ## 🔮 擴展規劃
+
+### ✅ 已完成
+- [x] **TensorFlow深度學習模型集成** - 支持神經網絡模型訓練與部署
+- [x] **Precision優化研究** - 針對不平衡數據的閾值優化與業務成本分析
 
 ### 🚀 近期優化
 - [ ] 添加模型A/B測試功能
@@ -210,6 +243,8 @@ graph TB
 - [ ] 增加更多特徵工程
 - [ ] 優化API響應時間
 - [ ] 添加模型性能告警機制
+- [ ] 實現Focal Loss處理類別不平衡
+- [ ] 模型集成學習（Ensemble）
 
 ### 🌟 長期願景
 - [ ] Kubernetes部署支援
@@ -217,12 +252,15 @@ graph TB
 - [ ] JWT認證和權限管理
 - [ ] 雲端部署（AWS/GCP/Azure）
 - [ ] 高級Airflow功能（感應器、分支等）
+- [ ] AutoML自動化模型選擇與調參
 
 ## 📚 學習資源
 
 - 📖 [詳細服務指南](SERVICES_GUIDE.md)
 - 🔧 [疑難排解指南](SERVICES_GUIDE.md#疑難排解)
 - 📊 [模型性能分析](notebooks/eda_and_baseline.ipynb)
+- 🧠 [TensorFlow模型訓練](notebooks/tensorflow_model_training.ipynb)
+- 🎯 [Precision優化實驗](notebooks/improve_tensorflow_precision.ipynb)
 - 🚀 [API使用範例](http://localhost:8000/docs)
 - ⚡ [Airflow DAG配置](dags/fraud_detection_dag.py)
 

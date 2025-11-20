@@ -8,8 +8,25 @@ import base64
 
 # --- 服務設定 ---
 import os
-API_URL = os.getenv("API_URL", "http://fraud_api:8000/predict")
-MLFLOW_BASE_URI = os.getenv("MLFLOW_BASE_URI", "http://mlflow_server:5000/api/2.0/")
+# 檢測是否在 Docker 環境中
+import socket
+def is_docker_container():
+    try:
+        socket.gethostbyname('mlflow_server')
+        return True
+    except socket.gaierror:
+        return False
+
+if is_docker_container():
+    # Docker 環境
+    API_URL = os.getenv("API_URL", "http://fraud_api:8000/predict")
+    MLFLOW_BASE_URI = os.getenv("MLFLOW_BASE_URI", "http://mlflow_server:5000/api/2.0/")
+else:
+    # 本機環境
+    API_URL = os.getenv("API_URL", "http://localhost:8000/predict")
+    MLFLOW_BASE_URI = os.getenv("MLFLOW_BASE_URI", "http://192.168.0.101:5000/api/2.0/")
+
+print(f"🔗 Dashboard 使用 MLflow URI: {MLFLOW_BASE_URI}")  # 調試輸出
 MLFLOW_EXP_NAME = "Fraud Detection Baseline" # 使用實驗名稱來查找 ID
 
 

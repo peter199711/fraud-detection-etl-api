@@ -13,16 +13,38 @@
 
 from datetime import datetime, timedelta
 from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.operators.bash import BashOperator
+from airflow.providers.standard.operators.python import PythonOperator
+from airflow.providers.standard.operators.bash import BashOperator
 from airflow.providers.postgres.operators.postgres import PostgresOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.models import Variable
 import sys
 import os
 
+# === 環境自適應設定 ===
+# 動態偵測運行環境（Docker 或本機）
+dag_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(dag_dir)
+
+# 偵測是否在 Docker 環境中（檢查是否存在 Docker 特有的路徑）
+IS_DOCKER = os.path.exists('/opt/airflow')
+
+if IS_DOCKER:
+    # Docker 環境設定
+    SRC_PATH = '/opt/airflow/src'
+    PROJECT_ROOT = '/opt/airflow'
+    DB_HOST = 'postgres_db'
+    MLFLOW_URI = 'http://mlflow_server:5000'
+else:
+    # 本機環境設定
+    SRC_PATH = os.path.join(project_root, 'src')
+    PROJECT_ROOT = project_root
+    # 從環境變數讀取，如果沒有則使用預設值
+    DB_HOST = os.getenv('AIRFLOW_DB_HOST', '172.24.0.1')
+    MLFLOW_URI = os.getenv('AIRFLOW_MLFLOW_URI', 'http://127.0.0.1:5000')
+
 # 添加專案根目錄到 Python 路徑
-sys.path.append('/opt/airflow/src')
+sys.path.append(SRC_PATH)
 
 # 預設參數
 default_args = {
@@ -40,7 +62,7 @@ dag = DAG(
     'fraud_detection_pipeline',
     default_args=default_args,
     description='詐欺偵測資料管道和模型訓練',
-    schedule_interval=timedelta(days=1),  # 每日執行
+    schedule=timedelta(days=1),  # 每日執行
     catchup=False,  # 不追補歷史執行
     tags=['fraud-detection', 'etl', 'ml'],
 )
@@ -136,9 +158,13 @@ db_check_task = PythonOperator(
 
 data_load_task = BashOperator(
     task_id='load_new_data',
-    bash_command="""
-    cd /opt/airflow/src && \
-    export DB_HOST=postgres_db && \
+    bash_command=f"""
+    cd {SRC_PATH} && \
+    export DB_HOST={DB_HOST} && \
+    export DB_NAME=fraud_db && \
+    export DB_USER=user && \
+    export DB_PASSWORD=password && \
+    export DATA_PATH={PROJECT_ROOT}/data/creditcard.csv && \
     python -m etl.db_load
     """,
     dag=dag,
@@ -152,16 +178,18 @@ create_feature_view_task = PythonOperator(
 
 model_training_task = BashOperator(
     task_id='perform_model_training',
-    bash_command="""
-    cd /opt/airflow && \
-    export DB_HOST=postgres_db && \
-    export MLFLOW_HOST=mlflow_server && \
+    bash_command=f"""
+    cd {PROJECT_ROOT} && \
+    export DB_HOST={DB_HOST} && \
+    export DB_NAME=fraud_db && \
+    export DB_USER=user && \
+    export DB_PASSWORD=password && \
+    export MLFLOW_TRACKING_URI={MLFLOW_URI} && \
     python -m src.etl.transform_data || true
-    echo "✅ 模型訓練任務完成（忽略 MLflow API 404 錯誤）"
+    echo "✅ 模型訓練任務完成"
     """,
     dag=dag,
 )
-
 
 # 修正後的任務依賴關係 - 簡化版本，跳過容易失敗的驗證步驟
 db_check_task >> data_load_task >> create_feature_view_task >> model_training_task >> cleanup_task
